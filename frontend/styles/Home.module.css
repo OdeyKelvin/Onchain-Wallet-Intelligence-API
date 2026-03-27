@@ -1,0 +1,360 @@
+/* =============================================================
+   Smart Money Analytics — styles/Home.module.css
+   Design direction: dark data terminal — Bloomberg meets Web3
+   Fonts: IBM Plex Mono (data) + Syne (headings)
+   Palette: near-black bg, amber whale, sky recurring, green new
+   ============================================================= */
+
+/* ── Google Fonts (add to _document.tsx or _app.tsx head) ────
+   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+   ─────────────────────────────────────────────────────────── */
+
+/* ── CSS Variables ────────────────────────────────────────── */
+:root {
+  --bg:           #0a0b0d;
+  --bg-card:      #111318;
+  --bg-hover:     #181c24;
+  --border:       rgba(255, 255, 255, 0.07);
+  --border-focus: rgba(255, 255, 255, 0.2);
+  --text-primary: #e8eaf0;
+  --text-muted:   #6b7280;
+  --text-dim:     #374151;
+  --accent:       #f59e0b;      /* amber  — whale */
+  --accent-sky:   #38bdf8;      /* sky    — recurring */
+  --accent-green: #4ade80;      /* green  — new */
+  --accent-red:   #f87171;      /* red    — errors */
+  --font-mono:    "IBM Plex Mono", "Courier New", monospace;
+  --font-display: "Syne", system-ui, sans-serif;
+  --radius:       6px;
+  --shadow:       0 1px 3px rgba(0,0,0,0.4);
+}
+
+/* ── Page shell ───────────────────────────────────────────── */
+.page {
+  min-height: 100vh;
+  background: var(--bg);
+  color:      var(--text-primary);
+  font-family: var(--font-mono);
+  font-size:   14px;
+  line-height: 1.6;
+}
+
+/* ── Header ───────────────────────────────────────────────── */
+.header {
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(10, 11, 13, 0.9);
+}
+
+.headerInner {
+  max-width: 1280px;
+  margin:    0 auto;
+  padding:   0 24px;
+  height:    64px;
+  display:   flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logoArea {
+  display:     flex;
+  align-items: center;
+  gap:         12px;
+}
+
+.logoIcon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.logoTitle {
+  font-family: var(--font-display);
+  font-size:   18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.logoSub {
+  font-size: 11px;
+  color:     var(--text-muted);
+  margin:    0;
+  letter-spacing: 0.04em;
+}
+
+.apiStatus {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+}
+
+.statusDot {
+  width:         8px;
+  height:        8px;
+  border-radius: 50%;
+  display:       inline-block;
+  flex-shrink:   0;
+}
+
+.statusDot[data-status="online"]   { background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green); animation: pulse 2s infinite; }
+.statusDot[data-status="offline"]  { background: var(--accent-red); }
+.statusDot[data-status="checking"] { background: var(--text-muted); animation: pulse 1s infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.apiStatusText {
+  font-size: 12px;
+  color:     var(--text-muted);
+}
+
+/* ── Main ─────────────────────────────────────────────────── */
+.main {
+  max-width: 1280px;
+  margin:    0 auto;
+  padding:   40px 24px 80px;
+  display:   flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* ── Search panel ─────────────────────────────────────────── */
+.searchPanel {
+  background:    var(--bg-card);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  padding:       28px;
+}
+
+.searchForm {
+  display:   flex;
+  gap:       16px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.inputGroup {
+  display:       flex;
+  flex-direction: column;
+  gap:           6px;
+}
+
+.inputGroup:first-child {
+  flex: 1;
+  min-width: 280px;
+}
+
+.inputLabel {
+  font-size:      11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color:          var(--text-muted);
+}
+
+.tokenInput,
+.providerSelect {
+  background:    var(--bg);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  color:         var(--text-primary);
+  font-family:   var(--font-mono);
+  font-size:     13px;
+  padding:       10px 14px;
+  outline:       none;
+  transition:    border-color 0.15s;
+  width:         100%;
+}
+
+.tokenInput::placeholder {
+  color: var(--text-dim);
+}
+
+.tokenInput:focus,
+.providerSelect:focus {
+  border-color: var(--border-focus);
+}
+
+.providerSelect {
+  min-width: 180px;
+  cursor:    pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:   no-repeat;
+  background-position: right 12px center;
+  padding-right:       36px;
+}
+
+.analyseBtn {
+  background:    var(--accent);
+  color:         #000;
+  font-family:   var(--font-display);
+  font-size:     14px;
+  font-weight:   700;
+  padding:       10px 24px;
+  border:        none;
+  border-radius: var(--radius);
+  cursor:        pointer;
+  white-space:   nowrap;
+  transition:    opacity 0.15s, transform 0.1s;
+  align-self:    flex-end;
+}
+
+.analyseBtn:hover:not(:disabled) {
+  opacity:   0.9;
+  transform: translateY(-1px);
+}
+
+.analyseBtn:disabled {
+  opacity: 0.4;
+  cursor:  not-allowed;
+}
+
+/* Quick example tokens */
+.examples {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+  margin-top:  16px;
+  flex-wrap:   wrap;
+}
+
+.examplesLabel {
+  font-size: 11px;
+  color:     var(--text-muted);
+  letter-spacing: 0.06em;
+}
+
+.exampleToken {
+  background:    transparent;
+  border:        1px solid var(--border);
+  border-radius: 4px;
+  color:         var(--text-muted);
+  font-family:   var(--font-mono);
+  font-size:     12px;
+  padding:       4px 10px;
+  cursor:        pointer;
+  transition:    border-color 0.15s, color 0.15s;
+}
+
+.exampleToken:hover:not(:disabled) {
+  border-color: var(--accent);
+  color:        var(--accent);
+}
+
+/* ── Banners ─────────────────────────────────────────────── */
+.mockBanner {
+  display:       flex;
+  align-items:   center;
+  gap:           10px;
+  background:    rgba(245, 158, 11, 0.08);
+  border:        1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius);
+  padding:       12px 16px;
+  font-size:     13px;
+  color:         var(--accent);
+}
+
+.errorBanner {
+  background:    rgba(248, 113, 113, 0.08);
+  border:        1px solid rgba(248, 113, 113, 0.25);
+  border-radius: var(--radius);
+  padding:       12px 16px;
+  font-size:     13px;
+  color:         var(--accent-red);
+}
+
+/* ── Meta row ────────────────────────────────────────────── */
+.metaRow {
+  display:   flex;
+  gap:       24px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color:     var(--text-muted);
+  padding:   0 2px;
+}
+
+.metaItem code {
+  font-family: var(--font-mono);
+  color:       var(--accent-sky);
+  font-size:   11px;
+}
+
+.metaItem strong {
+  color: var(--text-primary);
+}
+
+/* ── Sections ────────────────────────────────────────────── */
+.section {
+  display:       flex;
+  flex-direction: column;
+  gap:           16px;
+}
+
+.sectionTitle {
+  font-family:    var(--font-display);
+  font-size:      16px;
+  font-weight:    700;
+  letter-spacing: -0.01em;
+  color:          var(--text-primary);
+  margin:         0;
+  padding-bottom: 12px;
+  border-bottom:  1px solid var(--border);
+}
+
+/* ── Empty state ─────────────────────────────────────────── */
+.emptyState {
+  text-align: center;
+  padding:    80px 24px;
+  color:      var(--text-muted);
+}
+
+.emptyIcon {
+  font-size:    48px;
+  margin-bottom: 16px;
+}
+
+.emptyHint {
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+.footer {
+  border-top:  1px solid var(--border);
+  padding:     24px;
+  text-align:  center;
+  font-size:   12px;
+  color:       var(--text-muted);
+  display:     flex;
+  align-items: center;
+  justify-content: center;
+  gap:         12px;
+  flex-wrap:   wrap;
+}
+
+.footer a {
+  color:      var(--accent-sky);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  text-decoration: underline;
+}
+
+.footerDivider {
+  color: var(--text-dim);
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .searchForm  { flex-direction: column; }
+  .analyseBtn  { width: 100%; }
+  .metaRow     { flex-direction: column; gap: 8px; }
+}
