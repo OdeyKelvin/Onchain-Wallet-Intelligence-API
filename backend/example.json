@@ -1,0 +1,79 @@
+{
+  "token_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+  "top_wallets": [
+    {
+      "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+      "type": "whale",
+      "volume_usd": 4823910.55,
+      "tx_count": 14,
+      "last_active_block": 19987231
+    },
+    {
+      "address": "0x47ac0fb4f2d84898e4d9e7b4dab3c24507a6d503",
+      "type": "whale",
+      "volume_usd": 2940100.00,
+      "tx_count": 22,
+      "last_active_block": 19987100
+    },
+    {
+      "address": "0x28c6c06298d514db089934071355e5743bf21d60",
+      "type": "whale",
+      "volume_usd": 1875430.75,
+      "tx_count": 31,
+      "last_active_block": 19986780
+    },
+    {
+      "address": "0x21a31ee1afc51d94c2efccaa2092ad1028285549",
+      "type": "recurring",
+      "volume_usd": 389440.10,
+      "tx_count": 9,
+      "last_active_block": 19986830
+    },
+    {
+      "address": "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad",
+      "type": "recurring",
+      "volume_usd": 294810.50,
+      "tx_count": 7,
+      "last_active_block": 19987000
+    },
+    {
+      "address": "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+      "type": "recurring",
+      "volume_usd": 138920.00,
+      "tx_count": 5,
+      "last_active_block": 19986650
+    },
+    {
+      "address": "0x6b75d8af000000e20b7a7ddf000ba900b4009a80",
+      "type": "recurring",
+      "volume_usd": 102340.90,
+      "tx_count": 4,
+      "last_active_block": 19986500
+    },
+    {
+      "address": "0xae2d4617c862309a3d75a0ffb358c7a5009c673f",
+      "type": "new",
+      "volume_usd": 87500.25,
+      "tx_count": 1,
+      "last_active_block": 19987450
+    },
+    {
+      "address": "0x6cc5f688a315f3dc28a7781717a9a798a59fda7b",
+      "type": "new",
+      "volume_usd": 45200.00,
+      "tx_count": 2,
+      "last_active_block": 19987320
+    },
+    {
+      "address": "0xf977814e90da44bfa03b6295a0616a897441acec",
+      "type": "new",
+      "volume_usd": 18750.80,
+      "tx_count": 1,
+      "last_active_block": 19987410
+    }
+  ],
+  "total_volume_usd": 10716403.85,
+  "data_provider": "covalent",
+  "scanned_blocks": 50000,
+  "timestamp": "2026-03-26T14:32:00.000Z"
+}
