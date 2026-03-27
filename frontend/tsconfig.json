@@ -1,0 +1,53 @@
+{
+  "compilerOptions": {
+    // ── Language & Environment ─────────────────────────────
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "preserve",
+
+    // ── Strictness ────────────────────────────────────────
+    // Keep strict: true. It catches bugs TypeScript would otherwise miss.
+    // To temporarily relax a rule, disable it individually below strict.
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // ── Module Resolution ─────────────────────────────────
+    // baseUrl + paths enables clean imports: import { X } from "@/lib/api"
+    // instead of: import { X } from "../../lib/api"
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@/components/*": ["./components/*"],
+      "@/lib/*": ["./lib/*"],
+      "@/styles/*": ["./styles/*"]
+    },
+
+    // ── Emit ─────────────────────────────────────────────
+    // Next.js handles compilation — TypeScript is type-check only.
+    "noEmit": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "incremental": true,
+
+    // ── Next.js Plugin ────────────────────────────────────
+    "plugins": [{ "name": "next" }],
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
