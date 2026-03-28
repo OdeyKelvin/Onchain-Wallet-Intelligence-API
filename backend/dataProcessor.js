@@ -203,7 +203,7 @@ async function fetchFromAlchemy(tokenAddress, limit, blocks = 50_000) {
 
   // Block range: current tip minus requested lookback
   // ~12 sec/block on Ethereum mainnet
-  const approxLatestBlock = Math.floor(Date.now() / 12_000);
+  const approxLatestBlock = Math.floor((Date.now() / 1000 - 1438269988) / 12);
   const fromBlock = "0x" + Math.max(0, approxLatestBlock - blocks).toString(16);
 
   const { data } = await axios.post(
@@ -293,7 +293,7 @@ async function fetchFromEtherscan(tokenAddress, limit, blocks = 50_000) {
 
   console.log("[etherscan] Fetching token transfer logs...");
 
-  const approxLatestBlock = Math.floor(Date.now() / 12_000);
+  const approxLatestBlock = Math.floor((Date.now() / 1000 - 1438269988) / 12);
   const startBlock        = Math.max(0, approxLatestBlock - blocks);
 
   const { data } = await axios.get(baseUrl, {
