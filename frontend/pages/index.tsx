@@ -1,166 +1,337 @@
 // ============================================================
-//  Smart Money Analytics — pages/index.tsx
-//  Main dashboard page
+//  Onchain Wallet Intelligence — pages/index.tsx
+//
+//  Pure dashboard — no token input, no provider dropdown.
+//  Auto-fetches on load. Renders summary cards, insights panel,
+//  wallet table with score + trend columns.
 // ============================================================
 
-import { useState, useCallback }   from "react";
-import Head                         from "next/head";
-import WalletTable                  from "@/components/WalletTable";
-import VolumeChart                  from "@/components/VolumeChart";
-import { getAnalytics, AnalyticsResponse } from "@/lib/api";
+import { useState, useEffect } from "react";
+import Head                     from "next/head";
 
-const PROVIDERS = [
-  { value: "covalent",  label: "Covalent"  },
-  { value: "alchemy",   label: "Alchemy"   },
-  { value: "etherscan", label: "Etherscan" },
-  { value: "mock",      label: "Mock (no API key)" },
-];
+interface Wallet {
+  address:           string;
+  type:              "whale" | "recurring" | "new";
+  volume_usd:        number;
+  tx_count:          number;
+  last_active_block: number | null;
+  score?:            number;
+  trend?:            string;
+}
 
-const EXAMPLE_TOKENS = [
-  { label: "USDC", address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" },
-  { label: "USDT", address: "0xdAC17F958D2ee523a2206206994597C13D831ec7" },
-  { label: "WETH", address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
-  { label: "LINK", address: "0x514910771AF9Ca656af840dff83E8264EcF986CA" },
-];
+interface Insights {
+  market_signal: string;
+  hot_wallets:   string[];
+  avg_score:     number;
+  top_score:     number;
+  trend_summary: Record<string, number>;
+  score_dist:    Record<string, number>;
+}
 
-const ETH_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+interface IntelligenceData {
+  token_address:    string;
+  token_price_usd:  number;
+  data_source:      string;
+  top_wallets:      Wallet[];
+  total_volume_usd: number;
+  wallet_count:     number;
+  breakdown:        { whales: number; recurring: number; new: number };
+  insights:         Insights;
+  scanned_blocks:   number;
+  timestamp:        string;
+}
 
-export default function Home() {
-  const [tokenAddress, setTokenAddress] = useState<string>("");
-  const [provider,     setProvider]     = useState<string>("covalent");
-  const [inputError,   setInputError]   = useState<string | null>(null);
-  const [data,    setData]    = useState<AnalyticsResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error,   setError]   = useState<string | null>(null);
+const DEFAULT_TOKEN  = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"; // USDC
+const DEFAULT_SYMBOL = "USDC";
+const API_BASE       = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3000";
 
-  const handleFetch = useCallback(async (address: string, prov: string) => {
-    if (!address.trim()) { setInputError("Please enter a token address."); return; }
-    if (!ETH_ADDRESS_REGEX.test(address.trim())) { setInputError("Invalid address — must be 0x followed by 40 hex characters."); return; }
-    setInputError(null); setError(null); setData(null); setLoading(true);
+function formatUsd(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000)     return `$${(v / 1_000).toFixed(1)}K`;
+  return `$${v.toFixed(2)}`;
+}
+
+function truncate(addr: string): string {
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+function signalColor(signal: string): string {
+  if (signal === "bullish") return "#4ade80";
+  if (signal === "bearish") return "#f87171";
+  return "#f59e0b";
+}
+
+function trendColor(trend: string): string {
+  switch (trend) {
+    case "accumulating": return "#4ade80";
+    case "distributing": return "#f87171";
+    case "hot":          return "#f59e0b";
+    case "dormant":      return "#374151";
+    default:             return "#6b7280";
+  }
+}
+
+function typeStyle(type: string): React.CSSProperties {
+  switch (type) {
+    case "whale":     return { background: "rgba(245,158,11,0.12)",  color: "#f59e0b", border: "1px solid rgba(245,158,11,0.3)"  };
+    case "recurring": return { background: "rgba(56,189,248,0.1)",   color: "#38bdf8", border: "1px solid rgba(56,189,248,0.25)" };
+    default:          return { background: "rgba(74,222,128,0.1)",   color: "#4ade80", border: "1px solid rgba(74,222,128,0.25)" };
+  }
+}
+
+function typeEmoji(type: string): string {
+  return type === "whale" ? "🐋" : type === "recurring" ? "🔁" : "🆕";
+}
+
+function SummaryCard({ label, value, sub, accent }: { label: string; value: string; sub: string; accent: string }) {
+  return (
+    <div style={s.card}>
+      <p style={{ ...s.cardLabel, color: accent }}>{label}</p>
+      <p style={s.cardValue}>{value}</p>
+      <p style={s.cardSub}>{sub}</p>
+    </div>
+  );
+}
+
+function ScoreBar({ score }: { score: number }) {
+  const pct   = Math.min(score, 100);
+  const color = pct >= 80 ? "#4ade80" : pct >= 60 ? "#f59e0b" : pct >= 40 ? "#38bdf8" : "#6b7280";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "flex-end" }}>
+      <div style={{ width: "56px", height: "4px", background: "#1f2937", borderRadius: "2px", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: "2px" }} />
+      </div>
+      <span style={{ fontSize: "11px", color, minWidth: "30px", fontVariantNumeric: "tabular-nums" }}>
+        {pct.toFixed(0)}
+      </span>
+    </div>
+  );
+}
+
+function SkeletonCards() {
+  return (
+    <div style={s.cardsGrid}>
+      {[1,2,3,4].map((i) => (
+        <div key={i} style={{ ...s.card, height: "100px", background: "linear-gradient(90deg,#1a1e27 25%,#222633 50%,#1a1e27 75%)", backgroundSize: "200% 100%" }} />
+      ))}
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  const [data,        setData]        = useState<IntelligenceData | null>(null);
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [refreshing,  setRefreshing]  = useState(false);
+
+  useEffect(() => { load(false); }, []);
+
+  async function load(forceRefresh: boolean) {
+    if (forceRefresh) setRefreshing(true);
+    else              setLoading(true);
+    setError(null);
+
     try {
-      const result = await getAnalytics(address.trim(), prov);
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred.");
-    } finally { setLoading(false); }
-  }, []);
+      const suffix = forceRefresh ? "/refresh" : "";
+      const res    = await fetch(`${API_BASE}/intelligence/${DEFAULT_TOKEN}${suffix}`, {
+        headers: { Accept: "application/json" },
+        signal:  AbortSignal.timeout(20_000),
+      });
 
-  function handleSubmit(e: React.FormEvent) { e.preventDefault(); handleFetch(tokenAddress, provider); }
-  function handleExample(address: string) { setTokenAddress(address); handleFetch(address, provider); }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || err.error || `HTTP ${res.status}`);
+      }
+
+      const json: IntelligenceData = await res.json();
+      setData(json);
+      setLastUpdated(new Date().toLocaleTimeString());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load data.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
 
   return (
     <>
       <Head>
-        <title>Smart Money Analytics</title>
-        <meta name="description" content="Track top Ethereum wallets for any ERC20 token" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Onchain Wallet Intelligence</title>
+        <meta name="description" content="Real-time Ethereum wallet intelligence dashboard" />
+        <meta name="viewport"    content="width=device-width, initial-scale=1" />
       </Head>
 
       <div style={s.page}>
         <header style={s.header}>
           <div style={s.headerInner}>
             <div style={s.logoRow}>
-              <span style={s.logoIcon}>🧠</span>
+              <span style={{ fontSize: "24px" }}>🧠</span>
               <div>
-                <h1 style={s.logoTitle}>Smart Money Analytics</h1>
-                <p style={s.logoSub}>Ethereum ERC20 on-chain intelligence</p>
+                <h1 style={s.logoTitle}>Onchain Wallet Intelligence</h1>
+                <p  style={s.logoSub}>
+                  {DEFAULT_SYMBOL} · Top {data?.wallet_count ?? "—"} wallets · Auto-aggregated
+                </p>
               </div>
             </div>
-            <span style={s.poweredBy}>Powered by Covalent · Alchemy · Etherscan</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              {lastUpdated && <span style={{ fontSize: "11px", color: "#4b5563" }}>Updated {lastUpdated}</span>}
+              <button
+                onClick={() => load(true)}
+                disabled={refreshing || loading}
+                style={{ ...s.refreshBtn, opacity: (refreshing || loading) ? 0.4 : 1 }}
+              >
+                {refreshing ? "Refreshing…" : "↻ Refresh"}
+              </button>
+            </div>
           </div>
         </header>
 
         <main style={s.main}>
-          <section style={s.searchPanel}>
-            <form onSubmit={handleSubmit} style={s.form} noValidate>
-              <div style={s.fieldGroup}>
-                <label htmlFor="token-address" style={s.label}>ERC20 Token Contract Address</label>
-                <input
-                  id="token-address" type="text" value={tokenAddress}
-                  onChange={(e) => { setTokenAddress(e.target.value); if (inputError) setInputError(null); }}
-                  placeholder="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
-                  style={{ ...s.input, ...(inputError ? s.inputError : {}) }}
-                  spellCheck={false} autoComplete="off"
-                  aria-describedby={inputError ? "address-error" : undefined}
-                  aria-invalid={!!inputError}
-                />
-                {inputError && <p id="address-error" style={s.fieldError} role="alert">{inputError}</p>}
-              </div>
-
-              <div style={s.fieldGroup}>
-                <label htmlFor="provider" style={s.label}>Data Provider</label>
-                <select id="provider" value={provider} onChange={(e) => setProvider(e.target.value)} style={s.select}>
-                  {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                </select>
-              </div>
-
-              <div style={s.fieldGroup}>
-                <span style={s.label} aria-hidden>​</span>
-                <button type="submit" style={{ ...s.analyseBtn, ...(loading ? s.analyseBtnDisabled : {}) }} disabled={loading}>
-                  {loading ? "Fetching…" : "Analyse →"}
-                </button>
-              </div>
-            </form>
-
-            <div style={s.examplesRow}>
-              <span style={s.examplesLabel}>Quick load:</span>
-              {EXAMPLE_TOKENS.map((t) => (
-                <button key={t.address} onClick={() => handleExample(t.address)} disabled={loading} style={s.exampleBtn} title={t.address}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {data?.data_provider?.includes("mock") && (
+          {data?.data_source?.includes("mock") && (
             <div style={s.mockBanner} role="alert">
-              <strong>⚠ Demo data</strong> — all live providers were unavailable. Add your API keys to the backend <code style={s.inlineCode}>.env</code> and restart.
+              ⚠ <strong>Demo data</strong> — live providers unavailable.
+              Add API keys to backend <code style={s.code}>.env</code>.
             </div>
           )}
 
           {error && (
-            <div style={s.errorBanner} role="alert"><strong>Error:</strong> {error}</div>
+            <div style={s.errorBanner} role="alert">
+              <strong>Error:</strong> {error}
+            </div>
           )}
 
-          {(data || loading) && (
-            <>
-              {data && !loading && (
-                <div style={s.metaStrip}>
-                  <span style={s.metaItem}><span style={s.metaLabel}>Token: </span><code style={s.inlineCode}>{data.token_address ?? tokenAddress.toLowerCase()}</code></span>
-                  <span style={s.metaDivider}>·</span>
-                  <span style={s.metaItem}><span style={s.metaLabel}>Provider: </span><span style={s.metaValue}>{data.data_provider ?? provider}</span></span>
-                  <span style={s.metaDivider}>·</span>
-                  <span style={s.metaItem}><span style={s.metaLabel}>Wallets: </span><span style={s.metaValue}>{data.top_wallets.length}</span></span>
-                </div>
-              )}
+          {loading && <SkeletonCards />}
 
-              <section>
-                <h2 style={s.sectionTitle}>Volume Distribution</h2>
-                {loading ? <div style={s.chartSkeleton} /> : data ? <VolumeChart total_volume_usd={data.total_volume_usd} wallets={data.top_wallets} /> : null}
+          {data && !loading && (
+            <>
+              <section style={s.cardsGrid}>
+                <SummaryCard label="Total Volume"  value={formatUsd(data.total_volume_usd)}  sub={`${data.wallet_count} wallets · ${DEFAULT_SYMBOL}`}                accent="#f59e0b" />
+                <SummaryCard label="Token Price"   value={data.token_price_usd > 0 ? `$${data.token_price_usd.toFixed(4)}` : "Unavailable"} sub={DEFAULT_SYMBOL + " via DeFiLlama"} accent="#38bdf8" />
+                <SummaryCard label="Market Signal" value={data.insights.market_signal.toUpperCase()} sub={`Avg intelligence score: ${data.insights.avg_score}`}    accent={signalColor(data.insights.market_signal)} />
+                <SummaryCard label="Whale Count"   value={String(data.breakdown.whales)}     sub={`${data.breakdown.recurring} recurring · ${data.breakdown.new} new`} accent="#a78bfa" />
               </section>
 
               <section>
-                <h2 style={s.sectionTitle}>Top Wallets</h2>
-                {loading ? <div style={s.tableSkeleton}>{Array.from({ length: 6 }).map((_, i) => <div key={i} style={s.skeletonDataRow}><div style={{ ...s.skeletonCell, width: 160 }} /><div style={{ ...s.skeletonCell, width: 80 }} /><div style={{ ...s.skeletonCell, width: 110 }} /></div>)}</div> : data ? <WalletTable wallets={data.top_wallets} /> : null}
+                <h2 style={s.sectionTitle}>Intelligence Insights</h2>
+                <div style={s.insightsGrid}>
+                  <div style={s.insightCard}>
+                    <p style={s.insightLabel}>Wallet Trends</p>
+                    {Object.entries(data.insights.trend_summary).map(([trend, count]) => (
+                      <div key={trend} style={s.insightRow}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: trendColor(trend), display: "inline-block" }} />
+                          <span style={s.insightName}>{trend}</span>
+                        </div>
+                        <span style={s.insightVal}>{count} wallets</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={s.insightCard}>
+                    <p style={s.insightLabel}>Score Distribution</p>
+                    {Object.entries(data.insights.score_dist).map(([tier, count]) => (
+                      <div key={tier} style={s.insightRow}>
+                        <span style={s.insightName}>{tier.charAt(0).toUpperCase() + tier.slice(1)}</span>
+                        <span style={s.insightVal}>{count}</span>
+                      </div>
+                    ))}
+                    <p style={{ fontSize: "11px", color: "#374151", margin: "4px 0 0" }}>
+                      Top score: <strong style={{ color: "#e8eaf0" }}>{data.insights.top_score}</strong>
+                    </p>
+                  </div>
+
+                  <div style={s.insightCard}>
+                    <p style={s.insightLabel}>🔥 Hot Wallets</p>
+                    {data.insights.hot_wallets.length === 0 ? (
+                      <p style={{ fontSize: "11px", color: "#374151", margin: 0 }}>No wallets active in last 1,000 blocks</p>
+                    ) : (
+                      data.insights.hot_wallets.slice(0, 5).map((addr) => (
+                        <div key={addr}>
+                          <a href={`https://etherscan.io/address/${addr}`} target="_blank" rel="noopener noreferrer" style={s.addrLink}>
+                            {truncate(addr)} ↗
+                          </a>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div style={s.insightCard}>
+                    <p style={s.insightLabel}>Data Info</p>
+                    {[
+                      ["Source",         data.data_source],
+                      ["Blocks scanned", data.scanned_blocks?.toLocaleString()],
+                      ["Token",          truncate(data.token_address)],
+                      ["Fetched at",     new Date(data.timestamp).toLocaleTimeString()],
+                    ].map(([label, val]) => (
+                      <div key={label} style={s.insightRow}>
+                        <span style={s.insightName}>{label}</span>
+                        <span style={s.insightVal}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <h2 style={s.sectionTitle}>Top {data.top_wallets.length} Wallets</h2>
+                <div style={s.tableWrap}>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+                          {["#", "Address", "Type", "Volume (USD)", "Tx Count", "Score", "Trend"].map((col, i) => (
+                            <th key={col} style={{ ...s.th, textAlign: i >= 3 && i <= 5 ? "right" : "left" }}>{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.top_wallets.map((wallet, i) => (
+                          <tr key={wallet.address}
+                            style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", transition: "background 0.1s" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.03)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          >
+                            <td style={{ ...s.td, color: "#374151", width: "36px" }}>{i + 1}</td>
+                            <td style={s.td}>
+                              <a href={`https://etherscan.io/address/${wallet.address}`} target="_blank" rel="noopener noreferrer" style={s.addrLink} title={wallet.address}>
+                                {truncate(wallet.address)} ↗
+                              </a>
+                            </td>
+                            <td style={s.td}>
+                              <span style={{ ...s.badge, ...typeStyle(wallet.type) }}>
+                                {typeEmoji(wallet.type)} {wallet.type}
+                              </span>
+                            </td>
+                            <td style={{ ...s.td, textAlign: "right", fontWeight: 600, color: "#e8eaf0" }}>{formatUsd(wallet.volume_usd)}</td>
+                            <td style={{ ...s.td, textAlign: "right", color: "#9ca3af" }}>{wallet.tx_count}</td>
+                            <td style={{ ...s.td, textAlign: "right" }}><ScoreBar score={wallet.score ?? 0} /></td>
+                            <td style={s.td}>
+                              <span style={{ fontSize: "11px", color: trendColor(wallet.trend ?? "neutral"), textTransform: "capitalize" }}>
+                                {wallet.trend ?? "—"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ padding: "10px 16px", fontSize: "11px", color: "#374151", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                    {data.top_wallets.length} wallets · sorted by volume · {data.scanned_blocks?.toLocaleString()} blocks scanned
+                  </div>
+                </div>
               </section>
             </>
-          )}
-
-          {!data && !loading && !error && (
-            <div style={s.emptyState}>
-              <p style={s.emptyIcon}>🔍</p>
-              <p style={s.emptyTitle}>Enter a token address to get started</p>
-              <p style={s.emptyHint}>Try one of the quick-load buttons above to explore USDC, WETH, or LINK.</p>
-            </div>
           )}
         </main>
 
         <footer style={s.footer}>
-          <span>Smart Money Analytics API</span>
-          <span style={s.footerDot}>·</span>
-          <a href="https://github.com/OdeyKelvin/smart-money-analytics-api" target="_blank" rel="noopener noreferrer" style={s.footerLink}>GitHub ↗</a>
-          <span style={s.footerDot}>·</span>
-          <span>Data: Covalent · Alchemy · Etherscan</span>
+          <span>Onchain Wallet Intelligence API</span>
+          <span style={{ color: "#1f2937" }}>·</span>
+          <a href="https://github.com/OdeyKelvin/Onchain-Wallet-Intelligence-API" target="_blank" rel="noopener noreferrer" style={{ color: "#38bdf8", textDecoration: "none" }}>GitHub ↗</a>
+          <span style={{ color: "#1f2937" }}>·</span>
+          <span>Data: Alchemy · Etherscan · Covalent</span>
         </footer>
       </div>
     </>
@@ -168,46 +339,33 @@ export default function Home() {
 }
 
 const s = {
-  page: { minHeight: "100vh", background: "#0a0b0d", color: "#e8eaf0", fontFamily: "'IBM Plex Mono', 'Courier New', monospace", fontSize: "14px", lineHeight: 1.6 } as React.CSSProperties,
-  header: { borderBottom: "1px solid rgba(255,255,255,0.07)", background: "rgba(10,11,13,0.95)", position: "sticky", top: 0, zIndex: 50, backdropFilter: "blur(8px)" } as React.CSSProperties,
-  headerInner: { maxWidth: "1100px", margin: "0 auto", padding: "0 24px", height: "64px", display: "flex", alignItems: "center", justifyContent: "space-between" } as React.CSSProperties,
-  logoRow: { display: "flex", alignItems: "center", gap: "12px" } as React.CSSProperties,
-  logoIcon: { fontSize: "26px", lineHeight: 1 } as React.CSSProperties,
-  logoTitle: { fontFamily: "'Syne', system-ui, sans-serif", fontSize: "18px", fontWeight: 700, letterSpacing: "-0.02em", margin: 0, color: "#e8eaf0" } as React.CSSProperties,
-  logoSub: { fontSize: "11px", color: "#6b7280", margin: 0 } as React.CSSProperties,
-  poweredBy: { fontSize: "11px", color: "#374151" } as React.CSSProperties,
-  main: { maxWidth: "1100px", margin: "0 auto", padding: "40px 24px 80px", display: "flex", flexDirection: "column", gap: "32px" } as React.CSSProperties,
-  searchPanel: { background: "#111318", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: "28px" } as React.CSSProperties,
-  form: { display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-start" } as React.CSSProperties,
-  fieldGroup: { display: "flex", flexDirection: "column", gap: "6px", flex: 1, minWidth: "200px" } as React.CSSProperties,
-  label: { fontSize: "11px", letterSpacing: "0.07em", textTransform: "uppercase", color: "#6b7280" } as React.CSSProperties,
-  input: { background: "#0a0b0d", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#e8eaf0", fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", padding: "10px 14px", outline: "none", width: "100%", transition: "border-color 0.15s", boxSizing: "border-box" } as React.CSSProperties,
-  inputError: { borderColor: "#f87171" } as React.CSSProperties,
-  fieldError: { color: "#f87171", fontSize: "11px", margin: 0 } as React.CSSProperties,
-  select: { background: "#0a0b0d", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#e8eaf0", fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", padding: "10px 14px", outline: "none", width: "100%", cursor: "pointer", appearance: "none", WebkitAppearance: "none" } as React.CSSProperties,
-  analyseBtn: { background: "#f59e0b", border: "none", borderRadius: "6px", color: "#000", cursor: "pointer", fontFamily: "'Syne', system-ui, sans-serif", fontSize: "14px", fontWeight: 700, padding: "10px 24px", whiteSpace: "nowrap", transition: "opacity 0.15s", width: "100%" } as React.CSSProperties,
-  analyseBtnDisabled: { opacity: 0.45, cursor: "not-allowed" } as React.CSSProperties,
-  examplesRow: { display: "flex", alignItems: "center", gap: "8px", marginTop: "18px", flexWrap: "wrap" } as React.CSSProperties,
-  examplesLabel: { fontSize: "11px", color: "#4b5563" } as React.CSSProperties,
-  exampleBtn: { background: "transparent", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "4px", color: "#6b7280", cursor: "pointer", fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px", padding: "3px 10px", transition: "all 0.12s" } as React.CSSProperties,
-  mockBanner: { background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.22)", borderRadius: "6px", color: "#f59e0b", fontSize: "13px", padding: "12px 16px" } as React.CSSProperties,
-  errorBanner: { background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.22)", borderRadius: "6px", color: "#f87171", fontSize: "13px", padding: "12px 16px" } as React.CSSProperties,
-  inlineCode: { background: "rgba(255,255,255,0.07)", borderRadius: "3px", color: "#38bdf8", fontSize: "12px", padding: "1px 5px" } as React.CSSProperties,
-  metaStrip: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", fontSize: "12px", color: "#6b7280", padding: "2px 0" } as React.CSSProperties,
-  metaItem: { display: "inline-flex", gap: "4px", alignItems: "center" } as React.CSSProperties,
-  metaLabel: { color: "#4b5563" } as React.CSSProperties,
-  metaValue: { color: "#9ca3af" } as React.CSSProperties,
-  metaDivider: { color: "#1f2937" } as React.CSSProperties,
-  sectionTitle: { fontFamily: "'Syne', system-ui, sans-serif", fontSize: "15px", fontWeight: 700, letterSpacing: "-0.01em", color: "#e8eaf0", margin: "0 0 14px", paddingBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.06)" } as React.CSSProperties,
-  chartSkeleton: { width: "100%", height: "280px", borderRadius: "8px", background: "linear-gradient(90deg, #1a1e27 25%, #222633 50%, #1a1e27 75%)", backgroundSize: "200% 100%" } as React.CSSProperties,
-  tableSkeleton: { background: "#111318", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", overflow: "hidden" } as React.CSSProperties,
-  skeletonDataRow: { display: "flex", gap: "16px", padding: "14px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" } as React.CSSProperties,
-  skeletonCell: { height: "13px", borderRadius: "3px", background: "linear-gradient(90deg, #1a1e27 25%, #222633 50%, #1a1e27 75%)", backgroundSize: "200% 100%" } as React.CSSProperties,
-  emptyState: { textAlign: "center", padding: "80px 24px", color: "#6b7280" } as React.CSSProperties,
-  emptyIcon: { fontSize: "48px", marginBottom: "16px" } as React.CSSProperties,
-  emptyTitle: { fontSize: "16px", color: "#9ca3af", margin: "0 0 8px" } as React.CSSProperties,
-  emptyHint: { fontSize: "12px", margin: 0 } as React.CSSProperties,
-  footer: { borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", justifyContent: "center", alignItems: "center", gap: "12px", flexWrap: "wrap", padding: "20px 24px", fontSize: "11px", color: "#374151" } as React.CSSProperties,
-  footerLink: { color: "#38bdf8", textDecoration: "none" } as React.CSSProperties,
-  footerDot: { color: "#1f2937" } as React.CSSProperties,
+  page:        { minHeight: "100vh", background: "#0a0b0d", color: "#e8eaf0", fontFamily: "'IBM Plex Mono','Courier New',monospace", fontSize: "13px", lineHeight: 1.6 } as React.CSSProperties,
+  header:      { borderBottom: "1px solid rgba(255,255,255,0.07)", background: "rgba(10,11,13,0.95)", position: "sticky", top: 0, zIndex: 50, backdropFilter: "blur(8px)" } as React.CSSProperties,
+  headerInner: { maxWidth: "1200px", margin: "0 auto", padding: "0 24px", height: "64px", display: "flex", alignItems: "center", justifyContent: "space-between" } as React.CSSProperties,
+  logoRow:     { display: "flex", alignItems: "center", gap: "12px" } as React.CSSProperties,
+  logoTitle:   { fontFamily: "'Syne',system-ui,sans-serif", fontSize: "17px", fontWeight: 700, margin: 0, color: "#e8eaf0", letterSpacing: "-0.02em" } as React.CSSProperties,
+  logoSub:     { fontSize: "11px", color: "#4b5563", margin: 0 } as React.CSSProperties,
+  refreshBtn:  { background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "5px", color: "#9ca3af", cursor: "pointer", fontFamily: "inherit", fontSize: "12px", padding: "6px 14px" } as React.CSSProperties,
+  main:        { maxWidth: "1200px", margin: "0 auto", padding: "32px 24px 80px", display: "flex", flexDirection: "column", gap: "28px" } as React.CSSProperties,
+  mockBanner:  { background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.22)", borderRadius: "6px", color: "#f59e0b", padding: "12px 16px" } as React.CSSProperties,
+  errorBanner: { background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.22)", borderRadius: "6px", color: "#f87171", padding: "12px 16px" } as React.CSSProperties,
+  code:        { background: "rgba(255,255,255,0.08)", borderRadius: "3px", padding: "1px 5px", color: "#38bdf8", fontSize: "11px" } as React.CSSProperties,
+  cardsGrid:   { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "16px" } as React.CSSProperties,
+  card:        { background: "#111318", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: "20px" } as React.CSSProperties,
+  cardLabel:   { fontSize: "11px", letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 6px" } as React.CSSProperties,
+  cardValue:   { fontFamily: "'Syne',system-ui,sans-serif", fontSize: "26px", fontWeight: 700, margin: "0 0 4px", color: "#e8eaf0", letterSpacing: "-0.02em" } as React.CSSProperties,
+  cardSub:     { fontSize: "11px", color: "#4b5563", margin: 0 } as React.CSSProperties,
+  sectionTitle:{ fontFamily: "'Syne',system-ui,sans-serif", fontSize: "14px", fontWeight: 700, color: "#e8eaf0", margin: "0 0 14px", paddingBottom: "10px", borderBottom: "1px solid rgba(255,255,255,0.06)" } as React.CSSProperties,
+  insightsGrid:{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "12px" } as React.CSSProperties,
+  insightCard: { background: "#111318", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: "16px", display: "flex", flexDirection: "column", gap: "8px" } as React.CSSProperties,
+  insightLabel:{ fontSize: "11px", letterSpacing: "0.07em", textTransform: "uppercase", color: "#6b7280", margin: 0 } as React.CSSProperties,
+  insightRow:  { display: "flex", alignItems: "center", justifyContent: "space-between" } as React.CSSProperties,
+  insightName: { color: "#9ca3af", fontSize: "12px" } as React.CSSProperties,
+  insightVal:  { color: "#e8eaf0", fontSize: "12px", fontWeight: 600 } as React.CSSProperties,
+  addrLink:    { color: "#38bdf8", fontFamily: "monospace", fontSize: "12px", textDecoration: "none" } as React.CSSProperties,
+  tableWrap:   { background: "#111318", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", overflow: "hidden" } as React.CSSProperties,
+  th:          { padding: "10px 16px", fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", fontWeight: 500, whiteSpace: "nowrap" } as React.CSSProperties,
+  td:          { padding: "11px 16px", color: "#e8eaf0", whiteSpace: "nowrap" } as React.CSSProperties,
+  badge:       { display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 10px", borderRadius: "20px", fontSize: "11px", fontWeight: 600 } as React.CSSProperties,
+  footer:      { borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", justifyContent: "center", alignItems: "center", gap: "12px", padding: "20px 24px", fontSize: "11px", color: "#374151", flexWrap: "wrap" } as React.CSSProperties,
 } as const;
